@@ -15,7 +15,22 @@ def validate_characters(value: str):
         raise ValidationError("Input is too long.")
     if value.count('\n') > 20:
         raise ValidationError("Too many newlines.")
-        
+
+def recalculate_score(video):
+    days = (now - video.date_posted).days
+    like_count = video.likes.count()
+    dislike_count = video.dislikes.count()
+    total_votes = like_count + dislike_count
+
+    likeratio = like_count / total_votes if total_votes > 0 else 100
+    if likeratio == 0:
+        likeratio += 1
+
+    if video.duration > 180 and video.category != "Meme":
+        video.score = round((video.recommendations * (video.uploader.rating + (days / 30))) * (likeratio), 1)
+    else:
+        video.score = video.recommendations
+
 MEMES = "Memes"
 GAMING = "Gaming"
 EDUCATION = "Education"
@@ -24,7 +39,7 @@ ENTERTAINMENT = "Entertainment"
 MUSIC = "Music"
 DISCUSSION = "Discussion"
 MISCELLANEOUS = "Miscellaneous"
-        
+
 CATAGORIES = (
     (MEMES, "Memes"),
     (GAMING, "Gaming"),
@@ -35,6 +50,7 @@ CATAGORIES = (
     (DISCUSSION, "Discussion"),
     (MISCELLANEOUS, "Miscellaneous"),
 )
+
 
 class Video(models.Model, object):
     uploader = models.ForeignKey('profiles.Profile', on_delete=models.CASCADE, default=1)
@@ -63,21 +79,7 @@ class Video(models.Model, object):
 @receiver(m2m_changed, sender=Video.recommendations.through)
 def on_recommendation_change(sender, instance: Video, action, **kwargs):
     if action in ['post_add', 'post_remove', 'post_clear']:
-        days = (timezone.now() - instance.date_posted).days
-        like_count = instance.likes.count()
-        dislike_count = instance.dislikes.count()
-        total_votes = like_count + dislike_count
-
-        likeratio = like_count / total_votes if total_votes > 0 else 1
-        if likeratio == 0:
-            likeratio = .1
-
-        if instance.duration > 180 and instance.category != "Meme":
-            instance.score = round((instance.recommendations.count() * instance.uploader.rating) * likeratio, 1)
-        else:
-            instance.score = instance.recommendations.count()
-
-        instance.save(update_fields=["score"])
+        recalculate_score(instance)
 
 @receiver(post_save, sender=Video)
 def video_created(sender, instance, created, **kwargs):
